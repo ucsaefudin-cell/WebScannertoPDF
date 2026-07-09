@@ -11,7 +11,7 @@
 <body class="bg-slate-900 text-white min-h-screen flex flex-col justify-between antialiased selection:bg-blue-500">
 
     <header class="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center shadow-md">
-        <h1 class="text-lg font-bold tracking-wide text-blue-400">📄 WebScanner v2.1</h1>
+        <h1 class="text-lg font-bold tracking-wide text-blue-400">📄 WebScanner v2.2</h1>
         <div id="statusOpenCV" class="text-xs bg-yellow-600 px-2 py-1 rounded font-medium animate-pulse">
             Memuat Modul Engine...
         </div>
@@ -27,11 +27,11 @@
         </div>
 
         <div id="wrapperKoreksi" class="w-full hidden flex-col items-center">
-            <p class="text-sm text-center text-yellow-400 mb-2 font-medium">
-                Ketuk 4 Sudut (Kiri Atas ➔ Kanan Atas ➔ Kanan Bawah ➔ Kiri Bawah)
+            <p class="text-xs text-center text-yellow-400 mb-2 font-medium">
+                Ketuk 4 Sudut Berurutan. <span class="text-red-400 block font-bold mt-0.5">💡 Klik 2x (Double Tap) untuk Batal/Undo Titik</span>
             </p>
             <div class="relative bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-700 max-w-full">
-                <canvas id="kanvasFoto" class="max-w-full h-auto block"></canvas>
+                <canvas id="kanvasFoto" class="max-w-full h-auto block select-none"></canvas>
             </div>
             <canvas id="kanvasHasil" class="hidden"></canvas>
         </div>
@@ -40,7 +40,7 @@
 
     <footer class="p-4 bg-slate-800 border-t border-slate-700 w-full max-w-md mx-auto rounded-t-2xl shadow-inner">
         <div class="mb-4">
-            <p class="text-xs text-slate-400 mb-2 font-semibold">Daftar Halaman Tersimpan (<span id="jumlahHalaman">0</span>):</p>
+            <p class="text-xs text-slate-400 mb-2 font-semibold">Daftar Halaman Tersimpan (<span id="jumlahHalaman">0</span>) - <span class="text-blue-400 italic">Ketuk foto untuk preview besar</span>:</p>
             <div id="containerThumbnail" class="flex gap-2 overflow-x-auto py-1 min-h-[60px] scrollbar-thin scrollbar-thumb-slate-600">
                 <span id="placeholderThumb" class="text-xs text-slate-500 italic self-center">Belum ada halaman yang diambil.</span>
             </div>
@@ -57,14 +57,11 @@
             <div id="aksiKoreksi" class="flex flex-col gap-2 hidden">
                 <div class="flex gap-2">
                     <button id="btnUlangFoto" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold py-3 px-2 rounded-xl transition">
-                        🔄 Ulang Foto
-                    </button>
-                    <button id="btnUndoTitik" class="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white font-semibold py-3 px-2 rounded-xl transition opacity-50 cursor-not-allowed" disabled>
-                        ↩️ Batal 1 Titik
+                        🔄 Foto Ulang (Batal)
                     </button>
                 </div>
                 <button id="btnLuruskan" class="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-xl transition opacity-50 cursor-not-allowed" disabled>
-                    📐 Luruskan & Simpan
+                    📐 Luruskan & Simpan Halaman
                 </button>
             </div>
 
@@ -74,21 +71,42 @@
         </div>
     </footer>
 
+    <div id="modalPreview" class="fixed inset-0 bg-black/95 z-50 hidden flex-col justify-between p-4 transition-all duration-300">
+        <header class="flex justify-between items-center w-full max-w-md mx-auto py-2 border-b border-slate-800">
+            <h3 class="text-md font-bold text-blue-400">🔍 Review Hasil Scan</h3>
+            <button id="btnTutupPreview" class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition">
+                Tutup
+            </button>
+        </header>
+        <div class="flex-1 flex items-center justify-center p-2 w-full max-w-md mx-auto">
+            <img id="imgPreviewBesar" src="" class="max-w-full max-h-[75vh] object-contain rounded-lg shadow-2xl border border-slate-700">
+        </div>
+        <footer class="w-full max-w-md mx-auto py-2 text-center text-xs text-slate-500">
+            Gunakan file PDF final jika seluruh posisi halaman sudah sesuai.
+        </footer>
+    </div>
+
     <script>
         const video = document.getElementById('kamera');
         const kanvasFoto = document.getElementById('kanvasFoto');
         const kanvasHasil = document.getElementById('kanvasHasil');
         const statusOpenCV = document.getElementById('statusOpenCV');
         
+        // Element Wrappers
         const wrapperKamera = document.getElementById('wrapperKamera');
         const wrapperKoreksi = document.getElementById('wrapperKoreksi');
         const containerThumbnail = document.getElementById('containerThumbnail');
         const placeholderThumb = document.getElementById('placeholderThumb');
         const jumlahHalaman = document.getElementById('jumlahHalaman');
 
+        // Modal Preview Elements
+        const modalPreview = document.getElementById('modalPreview');
+        const imgPreviewBesar = document.getElementById('imgPreviewBesar');
+        const btnTutupPreview = document.getElementById('btnTutupPreview');
+
+        // Buttons
         const btnAmbilFoto = document.getElementById('btnAmbilFoto');
         const btnUlangFoto = document.getElementById('btnUlangFoto');
-        const btnUndoTitik = document.getElementById('btnUndoTitik');
         const btnLuruskan = document.getElementById('btnLuruskan');
         const btnUnduhPDF = document.getElementById('btnUnduhPDF');
 
@@ -96,6 +114,7 @@
         let titikKoordinat = []; 
         let fotoAsliData = null; 
         let rasioSkala = 1; 
+        let lastTapTime = 0; // Untuk deteksi manual double tap di mobile
 
         var document = document || {};
         document.getElementById('opencv-js').addEventListener('load', () => {
@@ -149,42 +168,32 @@
             kanvasFoto.width = fotoAsliData.width * rasioSkala;
             kanvasFoto.height = fotoAsliData.height * rasioSkala;
 
-            // Reset Titik & Tombol
             titikKoordinat = []; 
             btnLuruskan.disabled = true;
             btnLuruskan.classList.add('opacity-50', 'cursor-not-allowed');
-            btnUndoTitik.disabled = true;
-            btnUndoTitik.classList.add('opacity-50', 'cursor-not-allowed');
 
             gambarUlangKanvas();
         }
 
-        // FUNGSI BARU: Menggambar Garis & Titik
         function gambarUlangKanvas() {
             const ctx = kanvasFoto.getContext('2d');
             ctx.clearRect(0, 0, kanvasFoto.width, kanvasFoto.height);
             ctx.drawImage(fotoAsliData, 0, 0, kanvasFoto.width, kanvasFoto.height);
 
-            // 1. Gambar Garis Terlebih Dahulu (Berada di bawah titik)
             if (titikKoordinat.length > 1) {
                 ctx.beginPath();
                 ctx.moveTo(titikKoordinat[0].x, titikKoordinat[0].y);
-                
                 for (let i = 1; i < titikKoordinat.length; i++) {
                     ctx.lineTo(titikKoordinat[i].x, titikKoordinat[i].y);
                 }
-                
-                // Jika sudah 4 titik, tutup garis ke titik awal
                 if (titikKoordinat.length === 4) {
                     ctx.lineTo(titikKoordinat[0].x, titikKoordinat[0].y);
                 }
-                
-                ctx.strokeStyle = '#22c55e'; // Warna garis hijau
+                ctx.strokeStyle = '#22c55e'; 
                 ctx.lineWidth = 2.5;
                 ctx.stroke();
             }
 
-            // 2. Gambar Titik Lingkaran & Angka
             titikKoordinat.forEach((pt, index) => {
                 ctx.beginPath();
                 ctx.arc(pt.x, pt.y, 10, 0, 2 * Math.PI);
@@ -200,8 +209,31 @@
             });
         }
 
-        // Listener Ketukan di Layar HP
+        // INTEGRASI BARU: Event Handler Tunggal untuk Klik dan Double Tap (Anti Lag Mobile)
         kanvasFoto.addEventListener('click', (e) => {
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTapTime;
+            
+            // Jarak waktu di bawah 300ms dianggap sebagai Double Tap (Klik 2x)
+            if (tapLength < 300 && tapLength > 0) {
+                if (titikKoordinat.length > 0) {
+                    titikKoordinat.pop(); // Menghapus koordinat hasil klik pertama barusan
+                    if (titikKoordinat.length > 0) {
+                        titikKoordinat.pop(); // Menghapus koordinat titik sebelumnya yang ingin dibatalkan
+                    }
+                    
+                    // Kunci kembali tombol simpan jika titik berkurang dari 4
+                    btnLuruskan.disabled = true;
+                    btnLuruskan.classList.add('opacity-50', 'cursor-not-allowed');
+                    
+                    gambarUlangKanvas();
+                }
+                lastTapTime = 0; // Reset waktu tap
+                return;
+            }
+            lastTapTime = currentTime;
+
+            // Logika Single Click biasa untuk menambah titik sudut
             if (titikKoordinat.length >= 4) return; 
 
             const rect = kanvasFoto.getBoundingClientRect();
@@ -211,35 +243,9 @@
             titikKoordinat.push({ x: x, y: y });
             gambarUlangKanvas();
 
-            // Aktifkan tombol Undo jika ada minimal 1 titik
-            if (titikKoordinat.length > 0) {
-                btnUndoTitik.disabled = false;
-                btnUndoTitik.classList.remove('opacity-50', 'cursor-not-allowed');
-            }
-
-            // Aktifkan tombol Luruskan jika sudah 4 titik
             if (titikKoordinat.length === 4) {
                 btnLuruskan.disabled = false;
                 btnLuruskan.classList.remove('opacity-50', 'cursor-not-allowed');
-            }
-        });
-
-        // FUNGSI BARU: Tombol Undo / Batal 1 Titik
-        btnUndoTitik.addEventListener('click', () => {
-            if (titikKoordinat.length > 0) {
-                titikKoordinat.pop(); // Hapus titik terakhir dari array
-                
-                // Pastikan tombol Luruskan dimatikan kembali karena titik kurang dari 4
-                btnLuruskan.disabled = true;
-                btnLuruskan.classList.add('opacity-50', 'cursor-not-allowed');
-                
-                // Matikan tombol Undo jika array titik sudah kosong
-                if (titikKoordinat.length === 0) {
-                    btnUndoTitik.disabled = true;
-                    btnUndoTitik.classList.add('opacity-50', 'cursor-not-allowed');
-                }
-                
-                gambarUlangKanvas();
             }
         });
 
@@ -292,6 +298,7 @@
             kembaliKeKamera();
         });
 
+        // INTEGRASI BARU: Menambahkan Event Click pada Thumbnail untuk Preview Besar
         function updateThumbnailDOM() {
             if (daftarHalamanPDF.length > 0) {
                 placeholderThumb.classList.add('hidden');
@@ -301,16 +308,33 @@
             jumlahHalaman.textContent = daftarHalamanPDF.length;
 
             const indexTerbaru = daftarHalamanPDF.length - 1;
+            const currentDataURL = daftarHalamanPDF[indexTerbaru];
+
             const thumbDiv = document.createElement('div');
-            thumbDiv.className = "relative flex-shrink-0 border-2 border-blue-500 rounded-lg overflow-hidden w-12 h-16 bg-slate-700 shadow";
+            thumbDiv.className = "relative flex-shrink-0 border-2 border-blue-500 rounded-lg overflow-hidden w-12 h-16 bg-slate-700 shadow cursor-pointer active:scale-90 transition";
             
             const img = document.createElement('img');
-            img.src = daftarHalamanPDF[indexTerbaru];
+            img.src = currentDataURL;
             img.className = "w-full h-full object-cover";
             
             thumbDiv.appendChild(img);
+
+            // Listener ketukan pada thumbnail untuk membuka modal gambar besar
+            thumbDiv.addEventListener('click', () => {
+                imgPreviewBesar.src = currentDataURL;
+                modalPreview.classList.remove('hidden');
+                modalPreview.classList.add('flex');
+            });
+
             containerThumbnail.appendChild(thumbDiv);
         }
+
+        // Menutup Modal Preview Gambar Besar
+        btnTutupPreview.addEventListener('click', () => {
+            modalPreview.classList.add('hidden');
+            modalPreview.classList.remove('flex');
+            imgPreviewBesar.src = ""; // Membersihkan memori src
+        });
 
         btnUlangFoto.addEventListener('click', kembaliKeKamera);
 
