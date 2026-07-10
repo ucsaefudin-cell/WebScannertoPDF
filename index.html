@@ -12,7 +12,7 @@
 <body class="bg-slate-900 text-white min-h-screen flex flex-col justify-between antialiased selection:bg-blue-500">
 
     <header class="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center shadow-md">
-        <h1 class="text-lg font-bold tracking-wide text-blue-400">📄 WebScanner v2.6</h1>
+        <h1 class="text-lg font-bold tracking-wide text-blue-400">📄 WebScanner v2.7</h1>
         <div id="statusOpenCV" class="text-xs bg-yellow-600 px-2 py-1 rounded font-medium animate-pulse">
             Memuat Modul Engine...
         </div>
@@ -29,19 +29,10 @@
 
         <div id="wrapperKoreksi" class="w-full hidden flex-col items-center relative">
             <p class="text-xs text-center text-yellow-400 mb-2 font-medium px-2">
-                Ketuk 4 sudut dokumen. <span class="text-blue-400 block font-bold mt-0.5">💡 Tahan & Geser titik mana saja untuk merapikan posisi</span>
+                Ketuk 4 sudut. <span class="text-blue-400 font-bold">Klik 2x = Undo 1 Titik</span> | <span class="text-red-400 font-bold">Klik 3x = Reset Semua</span>
             </p>
             <div class="relative bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-700 max-w-full">
                 <canvas id="kanvasFoto" class="max-w-full h-auto block select-none" style="touch-action: none;"></canvas>
-                
-                <div class="absolute top-3 right-3 flex gap-2 z-10">
-                    <button id="floatUndo" class="bg-black/70 hover:bg-black text-amber-400 p-2.5 rounded-lg border border-white/10 active:scale-90 transition text-sm flex items-center justify-center gap-1 font-semibold shadow-md">
-                        ↩️ Undo
-                    </button>
-                    <button id="floatReset" class="bg-black/70 hover:bg-black text-red-400 p-2.5 rounded-lg border border-white/10 active:scale-90 transition text-sm flex items-center justify-center gap-1 font-semibold shadow-md">
-                        🗑️ Clear All
-                    </button>
-                </div>
             </div>
             <canvas id="kanvasHasil" class="hidden"></canvas>
         </div>
@@ -50,7 +41,7 @@
 
     <footer class="p-4 bg-slate-800 border-t border-slate-700 w-full max-w-md mx-auto rounded-t-2xl shadow-inner">
         <div class="mb-4">
-            <p class="text-xs text-slate-400 mb-2 font-semibold">Daftar Halaman (<span id="jumlahHalaman">0</span>) - <span class="text-blue-400 italic">Tahan & Geser kotak untuk atur urutan</span>:</p>
+            <p class="text-xs text-slate-400 mb-2 font-semibold">Daftar Halaman (<span id="jumlahHalaman">0</span>) - <span class="text-blue-400 italic">Geser kotak untuk atur urutan halaman PDF</span>:</p>
             <div id="containerThumbnail" class="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-slate-600 dynamic-zone">
                 <span id="placeholderThumb" class="text-xs text-slate-500 italic py-4 col-span-4 text-center pointer-events-none">Belum ada halaman yang diambil.</span>
             </div>
@@ -82,9 +73,7 @@
 
     <div id="modalPreview" class="fixed inset-0 bg-black/95 z-50 hidden flex-col justify-between p-4 transition-all duration-300">
         <header class="flex justify-between items-center w-full max-w-md mx-auto py-2 border-b border-slate-800">
-            <button id="btnHapusHalaman" class="bg-red-600 hover:bg-red-700 active:scale-95 text-white px-3 py-1.5 rounded-lg text-sm font-semibold transition flex items-center gap-1">
-                🗑️ Ulangi / Hapus
-            </button>
+            <div class="w-10"></div>
             <h3 class="text-md font-bold text-blue-400">🔍 Review Halaman</h3>
             <button id="btnTutupPreview" class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition">
                 Tutup
@@ -113,31 +102,30 @@
         const modalPreview = document.getElementById('modalPreview');
         const imgPreviewBesar = document.getElementById('imgPreviewBesar');
         const btnTutupPreview = document.getElementById('btnTutupPreview');
-        const btnHapusHalaman = document.getElementById('btnHapusHalaman');
 
         const btnAmbilFoto = document.getElementById('btnAmbilFoto');
         const btnUlangFoto = document.getElementById('btnUlangFoto');
         const btnLuruskan = document.getElementById('btnLuruskan');
         const btnUnduhPDF = document.getElementById('btnUnduhPDF');
 
-        const floatUndo = document.getElementById('floatUndo');
-        const floatReset = document.getElementById('floatReset');
-
         let daftarHalamanPDF = []; 
         let titikKoordinat = []; 
         let fotoAsliData = null; 
         let rasioSkala = 1; 
-        let currentIndexPreview = -1;
 
-        // State untuk kontrol manual dragging titik sudut
+        // State untuk pelacakan seret/drag titik
         let sedangMenggeser = false;
         let indexTitikTerpilih = -1;
-        const RADIUS_DETEKSI = 30; // Radius sensitivitas jari (30px) untuk mendeteksi titik terdekat di HP
+        const RADIUS_DETEKSI = 30; 
+
+        // State untuk mesin kalkulasi multi-tap (Klik 2x / Klik 3x) secara instan
+        let lastTapTime = 0;
+        let urutanKetukan = 0;
 
         Sortable.create(containerThumbnail, {
             animation: 180,
             ghostClass: 'bg-blue-900',
-            filter: '.pointer-events-none',
+            filter: '.btn-delete-thumb', // Jangan izinkan tombol X ikut diseret
             onEnd: function () {
                 const urutanBaru = [];
                 const imgs = containerThumbnail.querySelectorAll('.thumb-img');
@@ -201,9 +189,7 @@
             kanvasFoto.width = fotoAsliData.width * rasioSkala;
             kanvasFoto.height = fotoAsliData.height * rasioSkala;
 
-            // PERBAIKAN: Hapus auto-select sepenuhnya, mulai dari 0 titik kosong bersih
             titikKoordinat = []; 
-
             cekStatusTombolLuruskan();
             gambarUlangKanvas();
         }
@@ -242,13 +228,11 @@
             });
         }
 
-        // FUNGSI UTAMA BARU: Mengonversi posisi sentuhan layar ke koordinat lokal kanvas
         function dapatkanKoordinatAksi(e) {
             const rect = kanvasFoto.getBoundingClientRect();
             let clientX = e.clientX;
             let clientY = e.clientY;
             
-            // Cek jika input berasal dari layar sentuh HP (Touch Event)
             if (e.touches && e.touches.length > 0) {
                 clientX = e.touches[0].clientX;
                 clientY = e.touches[0].clientY;
@@ -259,11 +243,48 @@
             };
         }
 
-        // 1. Aksi Saat Layar Mulai Ditekan (Mulai Tarik / Tambah Titik)
         function aksiMulaiSentuh(e) {
             const posisi = dapatkanKoordinatAksi(e);
-            
-            // Cari apakah posisi jari dekat dengan salah satu titik yang sudah dibuat sebelumnya
+            const currentTime = new Date().getTime();
+            const selisihWaktu = currentTime - lastTapTime;
+            lastTapTime = currentTime;
+
+            // Kalkulator Multi-tap Berkecepatan Tinggi (<300ms)
+            if (selisihWaktu < 300 && selisihWaktu > 0) {
+                urutanKetukan++;
+            } else {
+                urutanKetukan = 1;
+            }
+
+            // GESTUR 1: Klik 2x (Double Tap) -> Kembali 1 titik (Undo)
+            if (urutanKetukan === 2) {
+                if (titikKoordinat.length > 0) {
+                    titikKoordinat.pop(); // Hapus titik bayangan dari klik ke-1 barusan
+                    if (titikKoordinat.length > 0) {
+                        titikKoordinat.pop(); // Mundur 1 titik asli yang diinginkan user
+                    }
+                    sedangMenggeser = false;
+                    indexTitikTerpilih = -1;
+                    gambarUlangKanvas();
+                    cekStatusTombolLuruskan();
+                }
+                if (e.cancelable) e.preventDefault();
+                return;
+            }
+
+            // GESTUR 2: Klik 3x (Triple Tap) -> Hapus semua titik (Reset)
+            if (urutanKetukan >= 3) {
+                titikKoordinat = []; 
+                sedangMenggeser = false;
+                indexTitikTerpilih = -1;
+                gambarUlangKanvas();
+                cekStatusTombolLuruskan();
+                urutanKetukan = 0; // Reset counter
+                if (e.cancelable) e.preventDefault();
+                return;
+            }
+
+            // Logika Ketukan Tunggal / Inisiasi Seret Titik
             let indexDitemukan = -1;
             for (let i = 0; i < titikKoordinat.length; i++) {
                 const pt = titikKoordinat[i];
@@ -275,38 +296,30 @@
             }
 
             if (indexDitemukan > -1) {
-                // Jika mengetuk dekat titik lama, aktifkan mode geser (Dragging)
                 sedangMenggeser = true;
                 indexTitikTerpilih = indexDitemukan;
                 if (e.cancelable) e.preventDefault();
             } else if (titikKoordinat.length < 4) {
-                // Jika mengetuk area kosong DAN jumlah titik belum sampai 4, buat titik baru
                 titikKoordinat.push({ x: posisi.x, y: posisi.y });
                 gambarUlangKanvas();
                 cekStatusTombolLuruskan();
             }
         }
 
-        // 2. Aksi Saat Jari Digeser Di Layar HP (Real-time Dragging)
         function aksiGeserSentuh(e) {
             if (!sedangMenggeser || indexTitikTerpilih === -1) return;
-            
             const posisi = dapatkanKoordinatAksi(e);
             
-            // Batasi gerakan agar koordinat titik tidak keluar dari frame gambar kanvas
             if (posisi.x < 0) posisi.x = 0;
             if (posisi.x > kanvasFoto.width) posisi.x = kanvasFoto.width;
             if (posisi.y < 0) posisi.y = 0;
             if (posisi.y > kanvasFoto.height) posisi.y = kanvasFoto.height;
 
-            // Perbarui koordinat titik yang dipilih secara langsung mengikuti jari
             titikKoordinat[indexTitikTerpilih] = { x: posisi.x, y: posisi.y };
-            
             gambarUlangKanvas();
             if (e.cancelable) e.preventDefault();
         }
 
-        // 3. Aksi Saat Jari Diangkat Dari Layar HP (Selesai Menggeser)
         function aksiSelesaiSentuh() {
             if (sedangMenggeser) {
                 sedangMenggeser = false;
@@ -315,7 +328,6 @@
             }
         }
 
-        // Pasang Event Listener Interaktif (Mendukung Mouse PC & Touchscreen HP)
         kanvasFoto.addEventListener('mousedown', aksiMulaiSentuh);
         kanvasFoto.addEventListener('mousemove', aksiGeserSentuh);
         window.addEventListener('mouseup', aksiSelesaiSentuh);
@@ -323,23 +335,6 @@
         kanvasFoto.addEventListener('touchstart', aksiMulaiSentuh, { passive: false });
         kanvasFoto.addEventListener('touchmove', aksiGeserSentuh, { passive: false });
         window.addEventListener('touchend', aksiSelesaiSentuh);
-
-        // Tombol Floating Transparan
-        floatUndo.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (titikKoordinat.length > 0) {
-                titikKoordinat.pop(); 
-                gambarUlangKanvas();
-                cekStatusTombolLuruskan();
-            }
-        });
-
-        floatReset.addEventListener('click', (e) => {
-            e.stopPropagation();
-            titikKoordinat = []; 
-            gambarUlangKanvas();
-            cekStatusTombolLuruskan();
-        });
 
         function cekStatusTombolLuruskan() {
             if (titikKoordinat.length === 4) {
@@ -360,7 +355,6 @@
                 srcPoints.push(pt.y / rasioSkala);
             });
 
-            // RESOLUSI OPTIMAL BARU: Diatur tepat 2x dari versi 2.3 (1600x2260 - Tajam & Ringan Tanpa Lag)
             const lebarHasil = 1600;
             const tinggiHasil = 2260;
 
@@ -398,6 +392,7 @@
             kembaliKeKamera();
         });
 
+        // INTEGRASI BARU: Render Thumbnail Bento Box Lengkap Dengan Icon Delete 'X' Langsung
         function renderUlangSemuaThumbnail() {
             containerThumbnail.innerHTML = "";
 
@@ -415,6 +410,7 @@
             jumlahHalaman.textContent = daftarHalamanPDF.length;
 
             daftarHalamanPDF.forEach((dataURL, idx) => {
+                // Wadah pembungkus utama kartu bento thumbnail
                 const thumbDiv = document.createElement('div');
                 thumbDiv.className = "relative aspect-[3/4] w-full border-2 border-blue-500 rounded-lg overflow-hidden bg-slate-700 shadow cursor-grab active:cursor-grabbing transition transform hover:scale-105";
                 
@@ -422,10 +418,23 @@
                 img.src = dataURL;
                 img.className = "w-full h-full object-cover thumb-img";
                 
-                thumbDiv.appendChild(img);
+                // TOMBOL BARU: Icon Silang (X) di Pojok Kanan Atas Gambar Thumbnail
+                const btnDeleteX = document.createElement('button');
+                btnDeleteX.className = "btn-delete-thumb absolute top-1 right-1 bg-red-600/90 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold z-20 shadow border border-white/20 transition active:scale-75";
+                btnDeleteX.innerHTML = "✕";
+                
+                // Listener hapus instan dari grid depan
+                btnDeleteX.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Mencegah modal preview ikut terbuka saat tombol X diklik
+                    daftarHalamanPDF.splice(idx, 1);
+                    renderUlangSemuaThumbnail();
+                });
 
+                thumbDiv.appendChild(img);
+                thumbDiv.appendChild(btnDeleteX); // Tempel tombol X ke sudut thumbnail
+
+                // Ketukan di area gambar thumbnail tetap membuka jendela review besar
                 thumbDiv.addEventListener('click', () => {
-                    currentIndexPreview = idx;
                     imgPreviewBesar.src = dataURL;
                     modalPreview.classList.remove('hidden');
                     modalPreview.classList.add('flex');
@@ -435,22 +444,10 @@
             });
         }
 
-        btnHapusHalaman.addEventListener('click', () => {
-            if (currentIndexPreview > -1) {
-                daftarHalamanPDF.splice(currentIndexPreview, 1);
-                modalPreview.classList.add('hidden');
-                modalPreview.classList.remove('flex');
-                imgPreviewBesar.src = "";
-                currentIndexPreview = -1;
-                renderUlangSemuaThumbnail();
-            }
-        });
-
         btnTutupPreview.addEventListener('click', () => {
             modalPreview.classList.add('hidden');
             modalPreview.classList.remove('flex');
             imgPreviewBesar.src = "";
-            currentIndexPreview = -1;
         });
 
         btnUlangFoto.addEventListener('click', kembaliKeKamera);
