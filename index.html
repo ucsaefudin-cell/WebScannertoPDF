@@ -12,7 +12,7 @@
 <body class="bg-slate-900 text-white min-h-screen flex flex-col justify-between antialiased selection:bg-blue-500">
 
     <header class="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center shadow-md">
-        <h1 class="text-lg font-bold tracking-wide text-blue-400">📄 WebScanner v2.7</h1>
+        <h1 class="text-lg font-bold tracking-wide text-blue-400">📄 WebScanner v2.8</h1>
         <div id="statusOpenCV" class="text-xs bg-yellow-600 px-2 py-1 rounded font-medium animate-pulse">
             Memuat Modul Engine...
         </div>
@@ -29,7 +29,7 @@
 
         <div id="wrapperKoreksi" class="w-full hidden flex-col items-center relative">
             <p class="text-xs text-center text-yellow-400 mb-2 font-medium px-2">
-                Ketuk 4 sudut. <span class="text-blue-400 font-bold">Klik 2x = Undo 1 Titik</span> | <span class="text-red-400 font-bold">Klik 3x = Reset Semua</span>
+                Ketuk 4 sudut dokumen. <span class="text-blue-400 font-bold">Klik 2x = Undo 1 Titik</span> | Tahan & Geser titik untuk merapikan
             </p>
             <div class="relative bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-700 max-w-full">
                 <canvas id="kanvasFoto" class="max-w-full h-auto block select-none" style="touch-action: none;"></canvas>
@@ -113,19 +113,18 @@
         let fotoAsliData = null; 
         let rasioSkala = 1; 
 
-        // State untuk pelacakan seret/drag titik
+        // State manajemen seret (dragging)
         let sedangMenggeser = false;
         let indexTitikTerpilih = -1;
         const RADIUS_DETEKSI = 30; 
 
-        // State untuk mesin kalkulasi multi-tap (Klik 2x / Klik 3x) secara instan
+        // State penanda waktu klik 2x
         let lastTapTime = 0;
-        let urutanKetukan = 0;
 
         Sortable.create(containerThumbnail, {
             animation: 180,
             ghostClass: 'bg-blue-900',
-            filter: '.btn-delete-thumb', // Jangan izinkan tombol X ikut diseret
+            filter: '.btn-delete-thumb', 
             onEnd: function () {
                 const urutanBaru = [];
                 const imgs = containerThumbnail.querySelectorAll('.thumb-img');
@@ -230,61 +229,36 @@
 
         function dapatkanKoordinatAksi(e) {
             const rect = kanvasFoto.getBoundingClientRect();
-            let clientX = e.clientX;
-            let clientY = e.clientY;
-            
-            if (e.touches && e.touches.length > 0) {
-                clientX = e.touches[0].clientX;
-                clientY = e.touches[0].clientY;
-            }
             return {
-                x: clientX - rect.left,
-                y: clientY - rect.top
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
             };
         }
 
+        // PERBAIKAN UTAMA: Menggunakan Pointer Events Tunggal untuk Menghilangkan Ghost Double Tap di HP
         function aksiMulaiSentuh(e) {
             const posisi = dapatkanKoordinatAksi(e);
             const currentTime = new Date().getTime();
             const selisihWaktu = currentTime - lastTapTime;
             lastTapTime = currentTime;
 
-            // Kalkulator Multi-tap Berkecepatan Tinggi (<300ms)
+            // GESTUR FIX: Deteksi Double Tap Murni (< 300ms) untuk Undo 1 Titik
             if (selisihWaktu < 300 && selisihWaktu > 0) {
-                urutanKetukan++;
-            } else {
-                urutanKetukan = 1;
-            }
-
-            // GESTUR 1: Klik 2x (Double Tap) -> Kembali 1 titik (Undo)
-            if (urutanKetukan === 2) {
                 if (titikKoordinat.length > 0) {
-                    titikKoordinat.pop(); // Hapus titik bayangan dari klik ke-1 barusan
+                    titikKoordinat.pop(); // Hapus titik baru yang sempat dibuat oleh ketukan ke-1 barusan
                     if (titikKoordinat.length > 0) {
-                        titikKoordinat.pop(); // Mundur 1 titik asli yang diinginkan user
+                        titikKoordinat.pop(); // Hapus titik asli sebelumnya (Proses Undo)
                     }
                     sedangMenggeser = false;
                     indexTitikTerpilih = -1;
                     gambarUlangKanvas();
                     cekStatusTombolLuruskan();
                 }
-                if (e.cancelable) e.preventDefault();
+                lastTapTime = 0; // Reset penanda waktu
                 return;
             }
 
-            // GESTUR 2: Klik 3x (Triple Tap) -> Hapus semua titik (Reset)
-            if (urutanKetukan >= 3) {
-                titikKoordinat = []; 
-                sedangMenggeser = false;
-                indexTitikTerpilih = -1;
-                gambarUlangKanvas();
-                cekStatusTombolLuruskan();
-                urutanKetukan = 0; // Reset counter
-                if (e.cancelable) e.preventDefault();
-                return;
-            }
-
-            // Logika Ketukan Tunggal / Inisiasi Seret Titik
+            // Logika Single Tap biasa / Inisiasi Menggeser Titik Sudut
             let indexDitemukan = -1;
             for (let i = 0; i < titikKoordinat.length; i++) {
                 const pt = titikKoordinat[i];
@@ -298,7 +272,6 @@
             if (indexDitemukan > -1) {
                 sedangMenggeser = true;
                 indexTitikTerpilih = indexDitemukan;
-                if (e.cancelable) e.preventDefault();
             } else if (titikKoordinat.length < 4) {
                 titikKoordinat.push({ x: posisi.x, y: posisi.y });
                 gambarUlangKanvas();
@@ -317,7 +290,6 @@
 
             titikKoordinat[indexTitikTerpilih] = { x: posisi.x, y: posisi.y };
             gambarUlangKanvas();
-            if (e.cancelable) e.preventDefault();
         }
 
         function aksiSelesaiSentuh() {
@@ -328,13 +300,10 @@
             }
         }
 
-        kanvasFoto.addEventListener('mousedown', aksiMulaiSentuh);
-        kanvasFoto.addEventListener('mousemove', aksiGeserSentuh);
-        window.addEventListener('mouseup', aksiSelesaiSentuh);
-
-        kanvasFoto.addEventListener('touchstart', aksiMulaiSentuh, { passive: false });
-        kanvasFoto.addEventListener('touchmove', aksiGeserSentuh, { passive: false });
-        window.addEventListener('touchend', aksiSelesaiSentuh);
+        // Memasang Pointer Events (Otomatis Mendukung Mouse Laptop & Touch Jari HP Tanpa Konflik)
+        kanvasFoto.addEventListener('pointerdown', aksiMulaiSentuh);
+        kanvasFoto.addEventListener('pointermove', aksiGeserSentuh);
+        window.addEventListener('pointerup', aksiSelesaiSentuh);
 
         function cekStatusTombolLuruskan() {
             if (titikKoordinat.length === 4) {
@@ -392,7 +361,6 @@
             kembaliKeKamera();
         });
 
-        // INTEGRASI BARU: Render Thumbnail Bento Box Lengkap Dengan Icon Delete 'X' Langsung
         function renderUlangSemuaThumbnail() {
             containerThumbnail.innerHTML = "";
 
@@ -410,7 +378,6 @@
             jumlahHalaman.textContent = daftarHalamanPDF.length;
 
             daftarHalamanPDF.forEach((dataURL, idx) => {
-                // Wadah pembungkus utama kartu bento thumbnail
                 const thumbDiv = document.createElement('div');
                 thumbDiv.className = "relative aspect-[3/4] w-full border-2 border-blue-500 rounded-lg overflow-hidden bg-slate-700 shadow cursor-grab active:cursor-grabbing transition transform hover:scale-105";
                 
@@ -418,22 +385,20 @@
                 img.src = dataURL;
                 img.className = "w-full h-full object-cover thumb-img";
                 
-                // TOMBOL BARU: Icon Silang (X) di Pojok Kanan Atas Gambar Thumbnail
+                // Icon Silang (✕) Tetap Berada di Sini Untuk Akses Hapus Instan Depan
                 const btnDeleteX = document.createElement('button');
                 btnDeleteX.className = "btn-delete-thumb absolute top-1 right-1 bg-red-600/90 hover:bg-red-700 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold z-20 shadow border border-white/20 transition active:scale-75";
                 btnDeleteX.innerHTML = "✕";
                 
-                // Listener hapus instan dari grid depan
                 btnDeleteX.addEventListener('click', (e) => {
-                    e.stopPropagation(); // Mencegah modal preview ikut terbuka saat tombol X diklik
+                    e.stopPropagation(); 
                     daftarHalamanPDF.splice(idx, 1);
                     renderUlangSemuaThumbnail();
                 });
 
                 thumbDiv.appendChild(img);
-                thumbDiv.appendChild(btnDeleteX); // Tempel tombol X ke sudut thumbnail
+                thumbDiv.appendChild(btnDeleteX); 
 
-                // Ketukan di area gambar thumbnail tetap membuka jendela review besar
                 thumbDiv.addEventListener('click', () => {
                     imgPreviewBesar.src = dataURL;
                     modalPreview.classList.remove('hidden');
