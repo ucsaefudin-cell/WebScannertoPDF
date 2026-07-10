@@ -12,7 +12,7 @@
 <body class="bg-slate-900 text-white min-h-screen flex flex-col justify-between antialiased selection:bg-blue-500">
 
     <header class="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center shadow-md">
-        <h1 class="text-lg font-bold tracking-wide text-blue-400">📄 WebScanner v2.5</h1>
+        <h1 class="text-lg font-bold tracking-wide text-blue-400">📄 WebScanner v2.6</h1>
         <div id="statusOpenCV" class="text-xs bg-yellow-600 px-2 py-1 rounded font-medium animate-pulse">
             Memuat Modul Engine...
         </div>
@@ -29,10 +29,10 @@
 
         <div id="wrapperKoreksi" class="w-full hidden flex-col items-center relative">
             <p class="text-xs text-center text-yellow-400 mb-2 font-medium px-2">
-                Atur 4 titik sudut agar pas di ujung dokumen kertas Anda
+                Ketuk 4 sudut dokumen. <span class="text-blue-400 block font-bold mt-0.5">💡 Tahan & Geser titik mana saja untuk merapikan posisi</span>
             </p>
             <div class="relative bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-700 max-w-full">
-                <canvas id="kanvasFoto" class="max-w-full h-auto block select-none"></canvas>
+                <canvas id="kanvasFoto" class="max-w-full h-auto block select-none" style="touch-action: none;"></canvas>
                 
                 <div class="absolute top-3 right-3 flex gap-2 z-10">
                     <button id="floatUndo" class="bg-black/70 hover:bg-black text-amber-400 p-2.5 rounded-lg border border-white/10 active:scale-90 transition text-sm flex items-center justify-center gap-1 font-semibold shadow-md">
@@ -51,7 +51,6 @@
     <footer class="p-4 bg-slate-800 border-t border-slate-700 w-full max-w-md mx-auto rounded-t-2xl shadow-inner">
         <div class="mb-4">
             <p class="text-xs text-slate-400 mb-2 font-semibold">Daftar Halaman (<span id="jumlahHalaman">0</span>) - <span class="text-blue-400 italic">Tahan & Geser kotak untuk atur urutan</span>:</p>
-            
             <div id="containerThumbnail" class="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-slate-600 dynamic-zone">
                 <span id="placeholderThumb" class="text-xs text-slate-500 italic py-4 col-span-4 text-center pointer-events-none">Belum ada halaman yang diambil.</span>
             </div>
@@ -130,7 +129,11 @@
         let rasioSkala = 1; 
         let currentIndexPreview = -1;
 
-        // SortableJS dikonfigurasi untuk grid Bento Box
+        // State untuk kontrol manual dragging titik sudut
+        let sedangMenggeser = false;
+        let indexTitikTerpilih = -1;
+        const RADIUS_DETEKSI = 30; // Radius sensitivitas jari (30px) untuk mendeteksi titik terdekat di HP
+
         Sortable.create(containerThumbnail, {
             animation: 180,
             ghostClass: 'bg-blue-900',
@@ -156,7 +159,6 @@
 
         async function startKamera() {
             try {
-                // Request resolusi video standar tinggi yang stabil untuk pemrosesan real-time
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
                     audio: false
@@ -180,14 +182,13 @@
             ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
 
             fotoAsliData = new Image();
-            // Kualitas ekstraksi gambar awal dipertahankan penuh
             fotoAsliData.src = tempCanvas.toDataURL('image/jpeg', 0.95); 
             fotoAsliData.onload = function() {
-                bukaModeKoreksi(tempCanvas);
+                bukaModeKoreksi();
             };
         });
 
-        function bukaModeKoreksi(srcTmpCanvas) {
+        function bukaModeKoreksi() {
             wrapperKamera.classList.add('hidden');
             document.getElementById('aksiKamera').classList.add('hidden');
             wrapperKoreksi.classList.remove('hidden');
@@ -200,80 +201,8 @@
             kanvasFoto.width = fotoAsliData.width * rasioSkala;
             kanvasFoto.height = fotoAsliData.height * rasioSkala;
 
+            // PERBAIKAN: Hapus auto-select sepenuhnya, mulai dari 0 titik kosong bersih
             titikKoordinat = []; 
-            
-            // Proses Auto Contour Detection (OpenCV)
-            try {
-                let srcMatFull = cv.imread(srcTmpCanvas);
-                let gray = new cv.Mat();
-                let blurred = new cv.Mat();
-                let edges = new cv.Mat();
-                
-                cv.cvtColor(srcMatFull, gray, cv.COLOR_RGBA2GRAY);
-                cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-                cv.Canny(blurred, edges, 75, 200);
-                
-                let contours = new cv.MatVector();
-                let hierarchy = new cv.Mat();
-                cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-                
-                let maxArea = 0;
-                let approxFourPoint = null;
-                
-                for (let i = 0; i < contours.size(); ++i) {
-                    let cnt = contours.get(i);
-                    let area = cv.contourArea(cnt);
-                    if (area > 5000 && area < (srcTmpCanvas.width * srcTmpCanvas.height * 0.85)) {
-                        let approx = new cv.Mat();
-                        let peri = cv.arcLength(cnt, true);
-                        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
-                        if (approx.rows === 4 && area > maxArea) {
-                            maxArea = area;
-                            if(approxFourPoint) approxFourPoint.delete();
-                            approxFourPoint = approx;
-                        } else {
-                            approx.delete();
-                        }
-                    }
-                }
-                
-                if (approxFourPoint) {
-                    let pts = [];
-                    for (let i = 0; i < 4; i++) {
-                        pts.push({ x: approxFourPoint.data32F[i*2], y: approxFourPoint.data32F[i*2+1] });
-                    }
-                    
-                    pts.sort((a, b) => a.y - b.y);
-                    let topTwo = [pts[0], pts[1]].sort((a, b) => a.x - b.x);
-                    let bottomTwo = [pts[2], pts[3]].sort((a, b) => a.x - b.x);
-                    
-                    titikKoordinat = [
-                        { x: topTwo[0].x * rasioSkala, y: topTwo[0].y * rasioSkala },
-                        { x: topTwo[1].x * rasioSkala, y: topTwo[1].y * rasioSkala },
-                        { x: bottomTwo[1].x * rasioSkala, y: bottomTwo[1].y * rasioSkala },
-                        { x: bottomTwo[0].x * rasioSkala, y: bottomTwo[0].y * rasioSkala }
-                    ];
-                    approxFourPoint.delete();
-                }
-                
-                gray.delete(); blurred.delete(); edges.delete(); contours.delete(); hierarchy.delete(); srcMatFull.delete();
-            } catch (e) {
-                console.log("Auto detection error", e);
-            }
-
-            // Batasan Kotak Default yang proporsional di tengah layar jika auto select meleset
-            if (titikKoordinat.length !== 4) {
-                let w = kanvasFoto.width;
-                let h = kanvasFoto.height;
-                let padW = w * 0.20;
-                let padH = h * 0.20;
-                titikKoordinat = [
-                    { x: padW, y: padH },
-                    { x: w - padW, y: padH },
-                    { x: w - padW, y: h - padH },
-                    { x: padW, y: h - padH }
-                ];
-            }
 
             cekStatusTombolLuruskan();
             gambarUlangKanvas();
@@ -300,7 +229,7 @@
 
             titikKoordinat.forEach((pt, index) => {
                 ctx.beginPath();
-                ctx.arc(pt.x, pt.y, 11, 0, 2 * Math.PI);
+                ctx.arc(pt.x, pt.y, 12, 0, 2 * Math.PI);
                 ctx.fillStyle = '#3b82f6'; 
                 ctx.fill();
                 ctx.strokeStyle = '#ffffff';
@@ -313,20 +242,89 @@
             });
         }
 
-        // Listener Ketukan Tunggal di Layar untuk menggeser/menaruh titik secara manual
-        kanvasFoto.addEventListener('click', (e) => {
-            if (titikKoordinat.length >= 4) return; 
-
+        // FUNGSI UTAMA BARU: Mengonversi posisi sentuhan layar ke koordinat lokal kanvas
+        function dapatkanKoordinatAksi(e) {
             const rect = kanvasFoto.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            let clientX = e.clientX;
+            let clientY = e.clientY;
+            
+            // Cek jika input berasal dari layar sentuh HP (Touch Event)
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            }
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
 
-            titikKoordinat.push({ x: x, y: y });
+        // 1. Aksi Saat Layar Mulai Ditekan (Mulai Tarik / Tambah Titik)
+        function aksiMulaiSentuh(e) {
+            const posisi = dapatkanKoordinatAksi(e);
+            
+            // Cari apakah posisi jari dekat dengan salah satu titik yang sudah dibuat sebelumnya
+            let indexDitemukan = -1;
+            for (let i = 0; i < titikKoordinat.length; i++) {
+                const pt = titikKoordinat[i];
+                const jarak = Math.hypot(posisi.x - pt.x, posisi.y - pt.y);
+                if (jarak < RADIUS_DETEKSI) {
+                    indexDitemukan = i;
+                    break;
+                }
+            }
+
+            if (indexDitemukan > -1) {
+                // Jika mengetuk dekat titik lama, aktifkan mode geser (Dragging)
+                sedangMenggeser = true;
+                indexTitikTerpilih = indexDitemukan;
+                if (e.cancelable) e.preventDefault();
+            } else if (titikKoordinat.length < 4) {
+                // Jika mengetuk area kosong DAN jumlah titik belum sampai 4, buat titik baru
+                titikKoordinat.push({ x: posisi.x, y: posisi.y });
+                gambarUlangKanvas();
+                cekStatusTombolLuruskan();
+            }
+        }
+
+        // 2. Aksi Saat Jari Digeser Di Layar HP (Real-time Dragging)
+        function aksiGeserSentuh(e) {
+            if (!sedangMenggeser || indexTitikTerpilih === -1) return;
+            
+            const posisi = dapatkanKoordinatAksi(e);
+            
+            // Batasi gerakan agar koordinat titik tidak keluar dari frame gambar kanvas
+            if (posisi.x < 0) posisi.x = 0;
+            if (posisi.x > kanvasFoto.width) posisi.x = kanvasFoto.width;
+            if (posisi.y < 0) posisi.y = 0;
+            if (posisi.y > kanvasFoto.height) posisi.y = kanvasFoto.height;
+
+            // Perbarui koordinat titik yang dipilih secara langsung mengikuti jari
+            titikKoordinat[indexTitikTerpilih] = { x: posisi.x, y: posisi.y };
+            
             gambarUlangKanvas();
-            cekStatusTombolLuruskan();
-        });
+            if (e.cancelable) e.preventDefault();
+        }
 
-        // Kontrol Tombol Floating Undo & Reset (Pengganti Double Tap yang Conflict)
+        // 3. Aksi Saat Jari Diangkat Dari Layar HP (Selesai Menggeser)
+        function aksiSelesaiSentuh() {
+            if (sedangMenggeser) {
+                sedangMenggeser = false;
+                indexTitikTerpilih = -1;
+                cekStatusTombolLuruskan();
+            }
+        }
+
+        // Pasang Event Listener Interaktif (Mendukung Mouse PC & Touchscreen HP)
+        kanvasFoto.addEventListener('mousedown', aksiMulaiSentuh);
+        kanvasFoto.addEventListener('mousemove', aksiGeserSentuh);
+        window.addEventListener('mouseup', aksiSelesaiSentuh);
+
+        kanvasFoto.addEventListener('touchstart', aksiMulaiSentuh, { passive: false });
+        kanvasFoto.addEventListener('touchmove', aksiGeserSentuh, { passive: false });
+        window.addEventListener('touchend', aksiSelesaiSentuh);
+
+        // Tombol Floating Transparan
         floatUndo.addEventListener('click', (e) => {
             e.stopPropagation();
             if (titikKoordinat.length > 0) {
@@ -362,7 +360,7 @@
                 srcPoints.push(pt.y / rasioSkala);
             });
 
-            // OPTIMASI BARU: Resolusi Diturunkan Menjadi 2x dari Versi 2.3 (1600x2260 - Seimbang & Ringan)
+            // RESOLUSI OPTIMAL BARU: Diatur tepat 2x dari versi 2.3 (1600x2260 - Tajam & Ringan Tanpa Lag)
             const lebarHasil = 1600;
             const tinggiHasil = 2260;
 
@@ -391,7 +389,6 @@
             
             cv.imshow(kanvasHasil, dstMat);
 
-            // Kualitas ekspor gambar akhir disetel pada kompresi aman 90% (Jernih & File Ringan)
             const scannedDataURL = kanvasHasil.toDataURL('image/jpeg', 0.90);
             daftarHalamanPDF.push(scannedDataURL);
 
@@ -419,7 +416,6 @@
 
             daftarHalamanPDF.forEach((dataURL, idx) => {
                 const thumbDiv = document.createElement('div');
-                // Menggunakan aspect-ratio kotak bento box responsif
                 thumbDiv.className = "relative aspect-[3/4] w-full border-2 border-blue-500 rounded-lg overflow-hidden bg-slate-700 shadow cursor-grab active:cursor-grabbing transition transform hover:scale-105";
                 
                 const img = document.createElement('img');
