@@ -352,7 +352,7 @@
             
             cv.imshow(kanvasHasil, dstMat);
 
-            const scannedDataURL = kanvasHasil.toDataURL('image/jpeg', 0.90);
+            const scannedDataURL = kanvasHasil.toDataURL('image/jpeg', 1);
             daftarHalamanPDF.push(scannedDataURL);
 
             srcMatFull.delete(); dstMat.delete(); M.delete(); srcTri.delete(); dstTri.delete();
@@ -435,7 +435,7 @@
                 if (index > 0) {
                     pdf.addPage();
                 }
-                pdf.addImage(dataURL, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+                pdf.addImage(dataURL, 'JPEG', 0, 0, 210, 297);
             });
 
             pdf.save('Hasil_Scan_Dokumen.pdf');
