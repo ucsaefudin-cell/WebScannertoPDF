@@ -12,7 +12,7 @@
 <body class="bg-slate-900 text-white min-h-screen flex flex-col justify-between antialiased selection:bg-blue-500">
 
     <header class="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center shadow-md">
-        <h1 class="text-lg font-bold tracking-wide text-blue-400">📄 WebScanner v2.4</h1>
+        <h1 class="text-lg font-bold tracking-wide text-blue-400">📄 WebScanner v2.5</h1>
         <div id="statusOpenCV" class="text-xs bg-yellow-600 px-2 py-1 rounded font-medium animate-pulse">
             Memuat Modul Engine...
         </div>
@@ -20,7 +20,7 @@
 
     <main class="flex-1 flex flex-col items-center justify-center p-2 w-full max-w-md mx-auto relative overflow-hidden">
         
-        <div id="wrapperKamera" class="w-full relative bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-700 h-[60vh] flex items-center justify-center">
+        <div id="wrapperKamera" class="w-full relative bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-700 h-[55vh] flex items-center justify-center">
             <video id="kamera" autoplay playsinline class="w-full h-full object-cover"></video>
             <div class="absolute top-3 left-3 bg-black/60 px-3 py-1 rounded-full text-xs border border-white/20">
                 Mode: Kamera Belakang
@@ -35,10 +35,10 @@
                 <canvas id="kanvasFoto" class="max-w-full h-auto block select-none"></canvas>
                 
                 <div class="absolute top-3 right-3 flex gap-2 z-10">
-                    <button id="floatUndo" class="bg-black/70 hover:bg-black text-amber-400 p-2.5 rounded-lg border border-white/10 active:scale-90 transition text-sm flex items-center justify-center gap-1 font-semibold shadow-md" title="Mundur 1 Titik">
+                    <button id="floatUndo" class="bg-black/70 hover:bg-black text-amber-400 p-2.5 rounded-lg border border-white/10 active:scale-90 transition text-sm flex items-center justify-center gap-1 font-semibold shadow-md">
                         ↩️ Undo
                     </button>
-                    <button id="floatReset" class="bg-black/70 hover:bg-black text-red-400 p-2.5 rounded-lg border border-white/10 active:scale-90 transition text-sm flex items-center justify-center gap-1 font-semibold shadow-md" title="Reset Semua Titik">
+                    <button id="floatReset" class="bg-black/70 hover:bg-black text-red-400 p-2.5 rounded-lg border border-white/10 active:scale-90 transition text-sm flex items-center justify-center gap-1 font-semibold shadow-md">
                         🗑️ Clear All
                     </button>
                 </div>
@@ -50,9 +50,10 @@
 
     <footer class="p-4 bg-slate-800 border-t border-slate-700 w-full max-w-md mx-auto rounded-t-2xl shadow-inner">
         <div class="mb-4">
-            <p class="text-xs text-slate-400 mb-2 font-semibold">Daftar Halaman (<span id="jumlahHalaman">0</span>) - <span class="text-blue-400 italic">Geser foto untuk ubah urutan PDF</span>:</p>
-            <div id="containerThumbnail" class="flex gap-2 overflow-x-auto py-1 min-h-[70px] scrollbar-thin scrollbar-thumb-slate-600 dynamic-zone">
-                <span id="placeholderThumb" class="text-xs text-slate-500 italic self-center pointer-events-none">Belum ada halaman yang diambil.</span>
+            <p class="text-xs text-slate-400 mb-2 font-semibold">Daftar Halaman (<span id="jumlahHalaman">0</span>) - <span class="text-blue-400 italic">Tahan & Geser kotak untuk atur urutan</span>:</p>
+            
+            <div id="containerThumbnail" class="grid grid-cols-4 gap-2 max-h-40 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-slate-600 dynamic-zone">
+                <span id="placeholderThumb" class="text-xs text-slate-500 italic py-4 col-span-4 text-center pointer-events-none">Belum ada halaman yang diambil.</span>
             </div>
         </div>
 
@@ -94,7 +95,7 @@
             <img id="imgPreviewBesar" src="" class="max-w-full max-h-[75vh] object-contain rounded-lg shadow-2xl border border-slate-700">
         </div>
         <footer class="w-full max-w-md mx-auto py-2 text-center text-xs text-slate-500">
-            Urutan PDF mengikuti susunan thumbnail di layar utama.
+            Urutan PDF mengikuti susunan susunan bento box di layar utama.
         </footer>
     </div>
 
@@ -120,7 +121,6 @@
         const btnLuruskan = document.getElementById('btnLuruskan');
         const btnUnduhPDF = document.getElementById('btnUnduhPDF');
 
-        // Utilities Buttons
         const floatUndo = document.getElementById('floatUndo');
         const floatReset = document.getElementById('floatReset');
 
@@ -130,6 +130,7 @@
         let rasioSkala = 1; 
         let currentIndexPreview = -1;
 
+        // SortableJS dikonfigurasi untuk grid Bento Box
         Sortable.create(containerThumbnail, {
             animation: 180,
             ghostClass: 'bg-blue-900',
@@ -155,22 +156,14 @@
 
         async function startKamera() {
             try {
+                // Request resolusi video standar tinggi yang stabil untuk pemrosesan real-time
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: { ideal: 3840 }, height: { ideal: 2160 } }, // Request resolusi tertinggi kamera HP
+                    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
                     audio: false
                 });
                 video.srcObject = stream;
             } catch (err) {
-                // Fallback jika resolusi 4K tidak didukung hardware internal browser
-                try {
-                    const streamFallback = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-                        audio: false
-                    });
-                    video.srcObject = streamFallback;
-                } catch(e) {
-                    alert('Gagal mengakses kamera belakang: ' + e.message);
-                }
+                alert('Gagal mengakses kamera belakang: ' + err.message);
             }
         }
 
@@ -187,7 +180,8 @@
             ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
 
             fotoAsliData = new Image();
-            fotoAsliData.src = tempCanvas.toDataURL('image/jpeg', 1.0); // Simpan kualitas mentah 100%
+            // Kualitas ekstraksi gambar awal dipertahankan penuh
+            fotoAsliData.src = tempCanvas.toDataURL('image/jpeg', 0.95); 
             fotoAsliData.onload = function() {
                 bukaModeKoreksi(tempCanvas);
             };
@@ -208,7 +202,7 @@
 
             titikKoordinat = []; 
             
-            // Proses Auto Contour Detection
+            // Proses Auto Contour Detection (OpenCV)
             try {
                 let srcMatFull = cv.imread(srcTmpCanvas);
                 let gray = new cv.Mat();
@@ -229,7 +223,6 @@
                 for (let i = 0; i < contours.size(); ++i) {
                     let cnt = contours.get(i);
                     let area = cv.contourArea(cnt);
-                    // Filter kontur agar tidak mengambil area yang terlalu besar mendekati ukuran penuh layar
                     if (area > 5000 && area < (srcTmpCanvas.width * srcTmpCanvas.height * 0.85)) {
                         let approx = new cv.Mat();
                         let peri = cv.arcLength(cnt, true);
@@ -268,7 +261,7 @@
                 console.log("Auto detection error", e);
             }
 
-            // PERBAIKAN: Jika auto select gagal/terlalu besar, buat kotak proporsional di tengah layar (padding 20%)
+            // Batasan Kotak Default yang proporsional di tengah layar jika auto select meleset
             if (titikKoordinat.length !== 4) {
                 let w = kanvasFoto.width;
                 let h = kanvasFoto.height;
@@ -320,7 +313,7 @@
             });
         }
 
-        // Listener Ketukan Tunggal di Layar
+        // Listener Ketukan Tunggal di Layar untuk menggeser/menaruh titik secara manual
         kanvasFoto.addEventListener('click', (e) => {
             if (titikKoordinat.length >= 4) return; 
 
@@ -333,11 +326,11 @@
             cekStatusTombolLuruskan();
         });
 
-        // PERBAIKAN LOGIKA: Kontrol Undo & Reset Menggunakan Tombol Floating Spesifik
+        // Kontrol Tombol Floating Undo & Reset (Pengganti Double Tap yang Conflict)
         floatUndo.addEventListener('click', (e) => {
             e.stopPropagation();
             if (titikKoordinat.length > 0) {
-                titikKoordinat.pop(); // Mundur satu titik saja
+                titikKoordinat.pop(); 
                 gambarUlangKanvas();
                 cekStatusTombolLuruskan();
             }
@@ -345,7 +338,7 @@
 
         floatReset.addEventListener('click', (e) => {
             e.stopPropagation();
-            titikKoordinat = []; // Kosongkan total untuk input manual mandiri
+            titikKoordinat = []; 
             gambarUlangKanvas();
             cekStatusTombolLuruskan();
         });
@@ -369,9 +362,9 @@
                 srcPoints.push(pt.y / rasioSkala);
             });
 
-            // UPGRADE RESOLUSI: Menggunakan Ukuran Standar Kertas A4 pada Resolusi Cetak Jernih 300 DPI
-            const lebarHasil = 2480;
-            const tinggiHasil = 3508;
+            // OPTIMASI BARU: Resolusi Diturunkan Menjadi 2x dari Versi 2.3 (1600x2260 - Seimbang & Ringan)
+            const lebarHasil = 1600;
+            const tinggiHasil = 2260;
 
             kanvasHasil.width = lebarHasil;
             kanvasHasil.height = tinggiHasil;
@@ -398,8 +391,8 @@
             
             cv.imshow(kanvasHasil, dstMat);
 
-            // UPGRADE KUALITAS: Ubah rasio kompresi gambar JPEG menjadi 0.95 (Sangat Tajam)
-            const scannedDataURL = kanvasHasil.toDataURL('image/jpeg', 0.95);
+            // Kualitas ekspor gambar akhir disetel pada kompresi aman 90% (Jernih & File Ringan)
+            const scannedDataURL = kanvasHasil.toDataURL('image/jpeg', 0.90);
             daftarHalamanPDF.push(scannedDataURL);
 
             srcMatFull.delete(); dstMat.delete(); M.delete(); srcTri.delete(); dstTri.delete();
@@ -426,7 +419,8 @@
 
             daftarHalamanPDF.forEach((dataURL, idx) => {
                 const thumbDiv = document.createElement('div');
-                thumbDiv.className = "relative flex-shrink-0 border-2 border-blue-500 rounded-lg overflow-hidden w-12 h-16 bg-slate-700 shadow cursor-grab active:cursor-grabbing transition transform hover:scale-105";
+                // Menggunakan aspect-ratio kotak bento box responsif
+                thumbDiv.className = "relative aspect-[3/4] w-full border-2 border-blue-500 rounded-lg overflow-hidden bg-slate-700 shadow cursor-grab active:cursor-grabbing transition transform hover:scale-105";
                 
                 const img = document.createElement('img');
                 img.src = dataURL;
